@@ -1,11 +1,10 @@
 package ca.carleton.gcrc.couch.command;
 
-import java.io.File;
-import java.io.PrintStream;
-import java.io.PrintWriter;
-import java.io.StringWriter;
+import java.io.*;
 import java.util.List;
 import java.util.Vector;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.servlet.ServletException;
 
@@ -33,7 +32,10 @@ import ca.carleton.gcrc.utils.VersionUtils;
 public class CommandUpdate implements Command {
 
 	static final private Logger logger = LoggerFactory.getLogger(UpdateSpecifier.class);
-	
+	public static final String npmReCompileUpdate = "npm run full-build";
+	//public static final String npmRecompileAll = "npm run full-build";
+	private static final Pattern patternNpmComilationTime = Pattern.compile("^\\.*Finished\\s*'webpack	'\\s*after\\s*(\\d+\\.\\d*)\\s*s");
+
 	private enum DatabaseType {
 		DOCUMENT_DATABASE("isDocumentDb"),
 		SUBMISSION_DATABASE("isSubmissionDb");
@@ -297,7 +299,23 @@ public class CommandUpdate implements Command {
 				cssProcess.generate(nunaliitDir);
 			}
 		}
-		
+
+		// Webpack compilation, if in development mode
+		{
+			File n2Dir = PathComputer.computeNunaliit2JsModuleDir(installDir);
+			if ( null != n2Dir ){
+				// Development environment
+				File n2es6Dir = new File(n2Dir, "src/main/nunaliit-es6");
+				File npmBinary = new File(n2Dir, "tools/node/npm");
+				if( null == npmBinary){
+					throw new Exception("Can not find node and npm toolsets, run mvn compile first");
+				}
+				if( null != n2es6Dir ){
+					compilingJsCode( npmBinary, n2es6Dir );
+				}
+			}
+		}
+
 		// Create _design/atlas document...
 		Document doc = null;
 		{
@@ -359,7 +377,7 @@ public class CommandUpdate implements Command {
 					entries.add(f);
 				}
 			}
-			
+
 			// Nunaliit2 javascript library
 			{
 				File n2Dir = PathComputer.computeNunaliit2JavascriptDir(installDir);
@@ -609,7 +627,39 @@ public class CommandUpdate implements Command {
 			}
 		}
 	}
-	
+	private void compilingJsCode(File npmBinary, File jsProjectFolder) throws Exception {
+		Runtime rt = Runtime.getRuntime();
+		try {
+			String npmBinaryFullPath = npmBinary.getAbsolutePath();
+			String npmCompileCommand = npmReCompileUpdate.replaceFirst("npm", npmBinaryFullPath );
+
+			Process p = rt.exec(npmCompileCommand, null, jsProjectFolder.getAbsoluteFile());
+			InputStream is = p.getErrorStream();
+			InputStreamReader isr = new InputStreamReader(is);
+			BufferedReader bufReader = new BufferedReader(isr);
+			String line = bufReader.readLine();
+			String npmCompilationTime = null;
+			while( null != line ) {
+				Matcher matcher = patternNpmComilationTime.matcher(line);
+				if( matcher.find() ) {
+					float time = Float.parseFloat( matcher.group(1) );
+					npmCompilationTime = Float.toString(time);
+				}
+				line = bufReader.readLine();
+			}
+			int exitValue = p.waitFor();
+			if( 0 != exitValue ){
+				logger.info(npmBinaryFullPath+" exited with value "+exitValue);
+				throw new Exception("Process exited with value: "+exitValue);
+			} else {
+				if ( null != npmCompilationTime ){
+					logger.info("Npm compilation succeed, it takes " + npmCompilationTime + "sec");
+				}
+			}
+		} catch (IOException e){
+			throw new Exception("Error while parsing info on npm command: ",e);
+		}
+	}
 	private void printAtlasVendorFile(PrintWriter pw, AtlasProperties atlasProperties, DatabaseType type){
 		String version = VersionUtils.getVersion();
 		String buildStr = VersionUtils.getBuildString();

@@ -324,6 +324,32 @@ public class PathComputer {
 	}
 
 	/**
+	 * Finds the "nunaliit2-js" module from the installation location
+	 * and returns it.
+	 * @param installDir Directory where the command-line tool is run from.
+	 * @return Directory where "nunaliit2-js" module is located
+	 * or null if not found.
+	 * */
+	static public File computeNunaliit2JsModuleDir(File installDir) {
+		if( null != installDir ) {
+			// Command-line package
+			File templatesDir = new File(installDir, "internal/nunaliit2");
+			if( templatesDir.exists() && templatesDir.isDirectory() ) {
+				return null;
+			}
+
+			// Development environment
+			File nunaliit2Dir = computeNunaliitDir(installDir);
+			templatesDir = new File(nunaliit2Dir, "nunaliit2-js");
+			if( templatesDir.exists() && templatesDir.isDirectory() ) {
+				return templatesDir;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Finds the "nunaliit2" javascript library from the installation location
 	 * and returns it.
 	 * @param installDir Directory where the command-line tool is run from.
